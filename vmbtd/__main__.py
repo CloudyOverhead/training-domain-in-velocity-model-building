@@ -6,7 +6,7 @@ parser.set_defaults(params='Hyperparameters1D')
 
 
 def parse_args():
-    from vmbrc import datasets, architecture
+    from vmbtd import datasets, architecture
 
     args, unknown_args = parser.parse_known_args()
     assert not (args.train and args.test)

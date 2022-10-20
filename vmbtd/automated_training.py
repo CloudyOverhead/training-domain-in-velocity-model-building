@@ -3,8 +3,8 @@
 
 from GeoFlow.AutomatedTraining.AutomatedTraining import optimize
 
-from vmbrc.__main__ import parser
-from vmbrc import architecture, datasets
+from vmbtd.__main__ import parser
+from vmbtd import architecture, datasets
 
 
 parser.add_argument('-d', '--destdir', type=str, default=None)

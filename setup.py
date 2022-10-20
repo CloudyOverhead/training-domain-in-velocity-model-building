@@ -42,7 +42,7 @@ setup(
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/CloudyOverhead/vmbrc",
+    url="https://github.com/CloudyOverhead/vmbtd",
     packages=find_packages(),
     install_requires=REQUIREMENTS,
     setup_requires=['setuptools-git'],

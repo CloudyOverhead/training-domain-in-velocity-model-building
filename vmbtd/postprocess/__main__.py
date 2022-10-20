@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 
 from GeoFlow.__main__ import int_or_list
 
-from vmbrc.postprocess.catalog import catalog
+from vmbtd.postprocess.catalog import catalog
 
 
 parser = ArgumentParser()
