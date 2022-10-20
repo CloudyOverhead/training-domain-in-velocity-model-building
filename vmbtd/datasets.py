@@ -199,8 +199,17 @@ class Article1D(Dataset):
 
 
 class Article2D(Article1D):
+    dip_max = 10
+
+    @classmethod
+    def construct(cls, dip_max):
+        name = f"{cls.__name__}Dip{dip_max}"
+        cls = type(name, cls.__bases__, dict(cls.__dict__))
+        cls.dip_max = dip_max
+        return cls
+
     def set_dataset(self):
-        model, acquire, inputs, outputs = super().set_dataset()
+        model, acquire, inputs, outputs = Article1D.set_dataset(self)
 
         self.trainsize = 200
         self.validatesize = 0
@@ -211,7 +220,7 @@ class Article2D(Article1D):
         model.amp_max = 8
         model.max_deform_nfreq = 40
         model.prob_deform_change = .7
-        model.dip_max = 10
+        model.dip_max = self.dip_max
         model.ddip_max = 4
 
         acquire.singleshot = False
@@ -222,6 +231,11 @@ class Article2D(Article1D):
             input.train_on_shots = False
 
         return model, acquire, inputs, outputs
+
+
+Article2DDip = {
+    dip_max: Article2D.construct(dip_max) for dip_max in [10, 25, 40]
+}
 
 
 class MarineModel(MarineModel):
