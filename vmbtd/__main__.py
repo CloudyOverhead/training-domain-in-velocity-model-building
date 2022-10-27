@@ -13,14 +13,23 @@ def parse_args():
     args.nn = getattr(architecture, args.nn)
     args.params = getattr(architecture, args.params)
     args.params = args.params(is_training=args.train)
-    args.dataset = getattr(datasets, args.dataset)(args.params, args.noise)
+    if '[' in args.dataset:
+        d = args.dataset
+        d, key = d[:d.find("[")], d[d.find("[")+1:d.find("]")]
+        key = eval(key)
+        args.dataset = getattr(datasets, d)[key]
+    else:
+        args.dataset = getattr(datasets, args.dataset)
+    args.dataset = args.dataset(args.params, args.noise)
     for arg, value in zip(unknown_args[::2], unknown_args[1::2]):
         arg = arg.strip('-')
         if arg in args.params.__dict__.keys():
             setattr(args.params, arg, eval(value))
         else:
-            raise ValueError(f"Argument `{arg}` not recognized. Could not "
-                             f"match it with an existing hyperparameter.")
+            raise ValueError(
+                f"Argument `{arg}` not recognized. Could not "
+                f"match it with an existing hyperparameter."
+            )
     return args
 
 

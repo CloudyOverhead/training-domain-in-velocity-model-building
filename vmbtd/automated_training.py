@@ -15,7 +15,14 @@ config = {
 args.nn = getattr(architecture, args.nn)
 args.params = getattr(architecture, args.params)
 args.params = args.params(is_training=True)
-args.dataset = getattr(datasets, args.dataset)(args.params, args.noise)
+if '[' in args.dataset:
+    d = args.dataset
+    d, key = d[:d.find("[")], d[d.find("[")+1:d.find("]")]
+    key = eval(key)
+    args.dataset = getattr(datasets, d)[key]
+else:
+    args.dataset = getattr(datasets, args.dataset)
+args.dataset = args.dataset(args.params, args.noise)
 
 if args.debug:
     args.params["epochs"] = 1

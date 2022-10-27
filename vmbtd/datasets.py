@@ -234,7 +234,7 @@ class Article2D(Article1D):
 
 
 Article2DDip = {
-    dip_max: Article2D.construct(dip_max) for dip_max in [10, 25, 40]
+    dip_max: Article2D.construct(dip_max) for dip_max in [0, 10, 25, 40]
 }
 
 
