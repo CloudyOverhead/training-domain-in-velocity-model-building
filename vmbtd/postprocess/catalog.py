@@ -1,4 +1,4 @@
-from os import listdir, remove
+from os import listdir, remove, makedirs
 from os.path import join, exists, split
 import re
 
@@ -73,6 +73,9 @@ class Metadata(File):
 
     def __init__(self, gpus, *args, **kwargs):
         is_not_generated = not exists(self.filepath)
+        dir, _ = split(self.filepath)
+        if not exists(dir):
+            makedirs(dir)
         super().__init__(self.filepath, 'a', *args, **kwargs)
         if is_not_generated:
             self.generate(gpus)
