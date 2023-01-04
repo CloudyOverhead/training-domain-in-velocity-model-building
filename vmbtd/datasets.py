@@ -139,6 +139,15 @@ class Dataset(GeoDataset, Sequence):
 
 
 class Article1D(Dataset):
+    @classmethod
+    def construct(cls, attribute_name, value, suffix=''):
+        name = f"{cls.__name__}{suffix}{value}"
+        cls = type(name, cls.__bases__, dict(cls.__dict__))
+        if attribute_name == 'dip_max' and value < 1E-2:
+            value = 1E-2
+        setattr(cls, attribute_name, value)
+        return cls
+
     def set_dataset(self):
         self.trainsize = 2000
         self.validatesize = 0
@@ -149,8 +158,8 @@ class Article1D(Dataset):
         model.NX = 692 * 2
         model.NZ = 752 * 2
         model.layer_num_min = 48
-        model.layer_dh_min = 20
-        model.layer_dh_max = 50
+        model.layer_dh_min = 50
+        model.layer_dh_max = 200
         model.water_vmin = 1430
         model.water_vmax = 1560
         model.water_dmin = .9 * model.water_vmin
@@ -160,6 +169,7 @@ class Article1D(Dataset):
         model.dzmin = None
         model.dzmax = 1000
         model.accept_decrease = .65
+        model.fault_dip_min = model.fault_dip_max = 90
 
         acquire = Acquisition(model=model)
         acquire.dt = .0004
@@ -198,15 +208,18 @@ class Article1D(Dataset):
         return model, acquire, inputs, outputs
 
 
+Article1DDZMax = {
+    dzmax: Article1D.construct('dzmax', dzmax, suffix='DZMax')
+    for dzmax in [250, 500, 1000, 2000]
+}
+Article1DFreq = {
+    peak_freq: Article1D.construct('peak_freq', peak_freq, suffix='Freq')
+    for peak_freq in [10, 15, 26, 40]
+}
+
+
 class Article2D(Article1D):
     dip_max = 10
-
-    @classmethod
-    def construct(cls, dip_max):
-        name = f"{cls.__name__}Dip{dip_max}"
-        cls = type(name, cls.__bases__, dict(cls.__dict__))
-        cls.dip_max = dip_max
-        return cls
 
     def set_dataset(self):
         model, acquire, inputs, outputs = Article1D.set_dataset(self)
@@ -221,7 +234,7 @@ class Article2D(Article1D):
         model.max_deform_nfreq = 40
         model.prob_deform_change = .7
         model.dip_max = self.dip_max
-        model.ddip_max = 4
+        model.ddip_max = self.dip_max / 2
 
         acquire.singleshot = False
 
@@ -234,7 +247,12 @@ class Article2D(Article1D):
 
 
 Article2DDip = {
-    dip_max: Article2D.construct(dip_max) for dip_max in [0, 10, 25, 40]
+    dip_max: Article2D.construct('dip_max', dip_max, suffix='Dip')
+    for dip_max in [0, 10, 25, 40]
+}
+Article2DFault = {
+    displ: Article2D.construct('fault_displ_min', displ, suffix='Fault')
+    for displ in [-100, -200, -400, -800]
 }
 
 
