@@ -290,19 +290,19 @@ class Hyperparameters1D(Hyperparameters):
     def __init__(self, is_training=True):
         super().__init__()
 
-        self.steps_per_epoch = 100
-        self.batch_size = 16
+        self.steps_per_epoch = 80
+        self.batch_size = 24
 
         self.learning_rate = 8E-4
 
-        self.decode_bins = 48
+        self.decode_bins = 24
 
         if is_training:
-            self.epochs = (10, 20, 10)
+            self.epochs = (10, 10, 20)
             self.loss_scales = (
                 {'ref': .4, 'vrms': .5, 'vint': .1, 'vdepth': .0},
                 {'ref': .1, 'vrms': .7, 'vint': .2, 'vdepth': .0},
-                {'ref': .1, 'vrms': .2, 'vint': .6, 'vdepth': .1},
+                {'ref': .1, 'vrms': .2, 'vint': .7, 'vdepth': .0},
             )
 
 
@@ -310,7 +310,7 @@ class Hyperparameters2D(Hyperparameters1D):
     def __init__(self, is_training=True):
         super().__init__(is_training=is_training)
 
-        self.batch_size = 4
+        self.batch_size = 2
 
         self.learning_rate = 8E-5
 
