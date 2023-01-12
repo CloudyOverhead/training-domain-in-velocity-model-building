@@ -322,6 +322,8 @@ class Hyperparameters2D(Hyperparameters1D):
             [1, 9, 1],
             [1, 1, 9],
         ]
+        self.encoder_dilations = [[1, 1, 1]] * 6
+        self.encoder_filters = [16]*3 + [32]*3
         self.rcnn_kernel = [15, 3, 3]
 
 
