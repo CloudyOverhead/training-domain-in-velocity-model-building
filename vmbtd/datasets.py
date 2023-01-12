@@ -139,13 +139,20 @@ class Dataset(GeoDataset, Sequence):
 
 
 class Article1D(Dataset):
+    dzmax = 1000
+    peak_freq = 25
+    dip_max = 1E-2
+    fault_displ_min = 0
+    fault_prob = 0
+
     @classmethod
-    def construct(cls, attribute_name, value, suffix=''):
-        name = f"{cls.__name__}{suffix}{value}"
+    def construct(cls, suffix='', **attributes):
+        name = f"{cls.__name__}{suffix}"
         cls = type(name, cls.__bases__, dict(cls.__dict__))
-        if attribute_name == 'dip_max' and value < 1E-2:
-            value = 1E-2
-        setattr(cls, attribute_name, value)
+        for attribute_name, value in attributes.items():
+            if attribute_name == 'dip_max' and value < 1E-2:
+                value = 1E-2
+            setattr(cls, attribute_name, value)
         return cls
 
     def set_dataset(self):
@@ -167,9 +174,12 @@ class Article1D(Dataset):
         model.vp_min = 1300.0
         model.vp_max = 4000.0
         model.dzmin = None
-        model.dzmax = 1000
+        model.dzmax = self.dzmax
         model.accept_decrease = .65
+        model.dip_max = self.dip_max
         model.fault_dip_min = model.fault_dip_max = 90
+        model.fault_displ_min = self.fault_displ_min
+        model.fault_prob = self.fault_prob
 
         acquire = Acquisition(model=model)
         acquire.dt = .0004
@@ -180,7 +190,7 @@ class Article1D(Dataset):
         acquire.gmin = int(470 / model.dh)
         acquire.gmax = int((470+72*acquire.dg*model.dh) / model.dh)
         acquire.minoffset = 470
-        acquire.peak_freq = 26
+        acquire.peak_freq = self.peak_freq
         acquire.df = 5
         acquire.wavefuns = [0, 1]
         acquire.source_depth = (acquire.Npad+4) * model.dh
@@ -209,18 +219,20 @@ class Article1D(Dataset):
 
 
 Article1DDZMax = {
-    dzmax: Article1D.construct('dzmax', dzmax, suffix='DZMax')
+    dzmax: Article1D.construct(
+        suffix=f'DZMax{dzmax}', dzmax=dzmax,
+    )
     for dzmax in [250, 500, 1000, 2000]
 }
 Article1DFreq = {
-    peak_freq: Article1D.construct('peak_freq', peak_freq, suffix='Freq')
-    for peak_freq in [10, 15, 26, 40]
+    peak_freq: Article1D.construct(
+        suffix=f'Freq{peak_freq}', peak_freq=peak_freq,
+    )
+    for peak_freq in [10, 15, 25, 40]
 }
 
 
 class Article2D(Article1D):
-    dip_max = 10
-
     def set_dataset(self):
         model, acquire, inputs, outputs = Article1D.set_dataset(self)
 
@@ -233,8 +245,7 @@ class Article2D(Article1D):
         model.amp_max = 8
         model.max_deform_nfreq = 40
         model.prob_deform_change = .7
-        model.dip_max = self.dip_max
-        model.ddip_max = self.dip_max / 2
+        model.ddip_max = model.dip_max / 2
 
         acquire.singleshot = False
 
@@ -247,11 +258,15 @@ class Article2D(Article1D):
 
 
 Article2DDip = {
-    dip_max: Article2D.construct('dip_max', dip_max, suffix='Dip')
+    dip_max: Article2D.construct(
+        suffix=f'Dip{dip_max}', dip_max=dip_max,
+    )
     for dip_max in [0, 10, 25, 40]
 }
 Article2DFault = {
-    displ: Article2D.construct('fault_displ_min', displ, suffix='Fault')
+    displ: Article2D.construct(
+        suffix=f'Fault{displ}', fault_displ_min=displ, fault_prob=1,
+    )
     for displ in [-100, -200, -400, -800]
 }
 
