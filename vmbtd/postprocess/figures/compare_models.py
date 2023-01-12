@@ -2,63 +2,82 @@
 
 from os.path import join
 from itertools import product
+from string import digits
 
 import numpy as np
 import proplot as pplt
 import pandas as pd
 
-from vmbtd.datasets import Article2DDip
-from vmbtd.architecture import RCNN2DClassifier, Hyperparameters2D
+from vmbtd.datasets import (
+    Article2DDip, Article2DFault, Article1DDZMax, Article1DFreq,
+)
+from vmbtd.architecture import (
+    RCNN2DRegressor, Hyperparameters1D, Hyperparameters2D,
+)
 from ..catalog import catalog, Figure, CompoundMetadata
 from .predictions import Predictions, Statistics, SelectExample
 
 TOINPUTS = ['shotgather']
 TOOUTPUTS = ['vint']
 
-params = Hyperparameters2D(is_training=False)
-params.batch_size = 10
-dips = list(Article2DDip.keys())
-datasets = {dip: Dataset(params) for dip, Dataset in Article2DDip.items()}
-statistics = {
-    (dataset, dip): Statistics.construct(
-        nn=RCNN2DClassifier,
-        dataset=dataset,
-        savedir=str(dip),
-    )
-    for _, dataset in datasets.items()
-    for dip, _ in datasets.items()
-}
+params_1d = Hyperparameters1D(is_training=False)
+params_1d.batch_size = 10
+params_2d = Hyperparameters2D(is_training=False)
+params_2d.batch_size = 10
 
 
 class Models(Figure):
-    Metadata = CompoundMetadata.combine(
-        *(
-            Predictions.construct(
-                nn=RCNN2DClassifier,
-                params=params,
-                logdir=join('logs', 'dips', str(dip)),
-                savedir=str(dip),
+    @classmethod
+    def construct(cls, name, datasets, log_subdir, is_2d, example_idx=0):
+        cls = type(name, cls.__bases__, dict(cls.__dict__))
+        cls.is_2d = is_2d
+        if not cls.is_2d:
+            cls.params = params_1d
+        else:
+            cls.params = params_2d
+        cls.datasets = {
+            attribute: Dataset(cls.params)
+            for attribute, Dataset in datasets.items()
+        }
+        cls.statistics = {
+            (dataset, attribute): Statistics.construct(
+                nn=RCNN2DRegressor,
                 dataset=dataset,
-                unique_suffix=str(dip),
+                savedir=str(attribute),
             )
-            for _, dataset in datasets.items()
-            for dip, _ in datasets.items()
-        ),
-        *statistics.values(),
-        *(
-            SelectExample.construct(
-                savedir=str(dip),
-                dataset=dataset,
-                select=SelectExample.partial_select_percentile(50),
-                SelectorMetadata=statistics[(dataset, dip)],
-            )
-            for _, dataset in datasets.items()
-            for dip, _ in datasets.items()
-        ),
-    )
+            for dataset in cls.datasets.values()
+            for attribute in cls.datasets.keys()
+        }
+        cls.Metadata = CompoundMetadata.combine(
+            *(
+                Predictions.construct(
+                    nn=RCNN2DRegressor,
+                    params=cls.params,
+                    logdir=join('logs', log_subdir, str(attribute)),
+                    savedir=str(attribute),
+                    dataset=dataset,
+                    unique_suffix=str(attribute),
+                )
+                for dataset in cls.datasets.values()
+                for attribute in cls.datasets.keys()
+            ),
+            *cls.statistics.values(),
+            *(
+                SelectExample.construct(
+                    savedir=str(attribute),
+                    dataset=dataset,
+                    select=lambda s, m, filenames: filenames[example_idx],
+                    SelectorMetadata=cls.statistics[(dataset, attribute)],
+                )
+                for dataset in cls.datasets.values()
+                for attribute in cls.datasets.keys()
+            ),
+        )
+        return cls
 
     def plot(self, data):
-        dataset = next(iter(datasets.values()))
+        dataset = next(iter(self.datasets.values()))
+        attributes = self.datasets.keys()
         vint_meta = dataset.outputs['vint']
 
         fig, axs = pplt.subplots(
@@ -71,21 +90,26 @@ class Models(Figure):
         )
 
         table = pd.DataFrame(
-            np.empty([4, 4]), index=dips, columns=dips, dtype=str,
+            np.empty([4, 4]), index=attributes, columns=attributes, dtype=str,
         )
-        for source_dip, target_dip in product(dips, dips):
-            key = f'Statistics_Article2DDip{target_dip}_{source_dip}'
+        name = dataset.name.rstrip(digits+'-')
+        for source_dip, target_dip in product(attributes, attributes):
+            key = f'Statistics_{name}{target_dip}_{source_dip}'
             statistics = data[key]
-            metric = statistics['similarities']
-            cell = f"${metric.mean():.3f} \\pm {metric.std():.3f}$"
+            if self.is_2d:
+                metric = statistics['similarities']
+                cell = f"${metric.mean():.3f} \\pm {metric.std():.3f}$"
+            else:
+                metric = statistics['rmses']
+                cell = f"${round(metric.mean())} \\pm {round(metric.std())}$"
             table.loc[source_dip, target_dip] = cell
         print(table.to_latex(escape=False))
 
         axs_pairs = [[axs[i], axs[i+1]] for i in range(0, len(axs), 2)]
-        for (g_ax, p_ax), (dip, dataset) in zip(
-            axs_pairs, product(datasets.keys(), datasets.values()),
+        for (g_ax, p_ax), (value, dataset) in zip(
+            axs_pairs, product(self.datasets.keys(), self.datasets.values()),
         ):
-            example = data[f'SelectExample_{dataset.name}_{dip}']
+            example = data[f'SelectExample_{dataset.name}_{value}']
             label = example['labels/vint']
             pred = example['preds/vint']
 
@@ -136,4 +160,20 @@ class Models(Figure):
             axs[:, i].format(abc='(a)')
 
 
-catalog.register(Models)
+Dips = Models.construct(
+    'Dips', Article2DDip, 'dips', is_2d=True, example_idx=3,
+)
+Faults = Models.construct(
+    'Faults', Article2DFault, 'faults', is_2d=True,
+)
+DZMaxs = Models.construct(
+    'DZMaxs', Article1DDZMax, 'dzmaxs', is_2d=False,
+)
+Freqs = Models.construct(
+    'Freqs', Article1DFreq, 'freqs', is_2d=False,
+)
+
+catalog.register(Dips)
+catalog.register(Faults)
+catalog.register(DZMaxs)
+catalog.register(Freqs)
