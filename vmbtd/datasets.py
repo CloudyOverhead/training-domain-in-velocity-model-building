@@ -177,9 +177,6 @@ class Article1D(Dataset):
         model.dzmax = self.dzmax
         model.accept_decrease = .65
         model.dip_max = self.dip_max
-        model.fault_dip_min = model.fault_dip_max = 90
-        model.fault_displ_min = self.fault_displ_min
-        model.fault_prob = self.fault_prob
 
         acquire = Acquisition(model=model)
         acquire.dt = .0004
@@ -187,8 +184,8 @@ class Article1D(Dataset):
         acquire.resampling = 10
         acquire.dg = 8
         acquire.ds = 8
-        acquire.gmin = int(470 / model.dh)
-        acquire.gmax = int((470+72*acquire.dg*model.dh) / model.dh)
+        acquire.gmin = gmin = int(470 / model.dh)
+        acquire.gmax = gmax = int((470+72*acquire.dg*model.dh) / model.dh)
         acquire.minoffset = 470
         acquire.peak_freq = self.peak_freq
         acquire.df = 5
@@ -198,6 +195,13 @@ class Article1D(Dataset):
         acquire.tdelay = 3.0 / (acquire.peak_freq-acquire.df)
         acquire.singleshot = True
         acquire.configuration = 'inline'
+
+        npad = acquire.Npad
+        model.fault_dip_min = model.fault_dip_max = 90
+        model.fault_displ_min = self.fault_displ_min
+        model.fault_x_lim = [gmax//2+npad, model.NX-gmax-gmin//2-npad]
+        model.fault_y_lim = [0, model.NZ]
+        model.fault_prob = self.fault_prob
 
         inputs = {ShotGather.name: ShotGather(model=model, acquire=acquire)}
         bins = self.params.decode_bins
