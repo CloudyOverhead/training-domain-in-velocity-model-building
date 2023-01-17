@@ -172,6 +172,7 @@ Faults = Models.construct(
 DZMaxs = Models.construct(
     'DZMaxs', Article1DDZMax, 'dzmaxs', is_2d=False,
 )
+DZMaxs.filename = 'dzmaxs.pdf'
 Freqs = Models.construct(
     'Freqs', Article1DFreq, 'freqs', is_2d=False,
 )
