@@ -90,7 +90,10 @@ class Models(Figure):
         )
 
         table = pd.DataFrame(
-            np.empty([4, 4]), index=attributes, columns=attributes, dtype=str,
+            np.empty([4, 4]),
+            index=[f'${a}$' for a in attributes],
+            columns=[f'${a}$' for a in attributes],
+            dtype=str,
         )
         name = dataset.name.rstrip(digits+'-')
         for source_dip, target_dip in product(attributes, attributes):
@@ -102,7 +105,7 @@ class Models(Figure):
             else:
                 metric = statistics['rmses']
                 cell = f"${round(metric.mean())} \\pm {round(metric.std())}$"
-            table.loc[source_dip, target_dip] = cell
+            table.loc[f'${source_dip}$', f'${target_dip}$'] = cell
         print(table.to_latex(escape=False))
 
         axs_pairs = [[axs[i], axs[i+1]] for i in range(0, len(axs), 2)]
