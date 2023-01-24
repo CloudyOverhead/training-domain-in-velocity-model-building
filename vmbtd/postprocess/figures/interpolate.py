@@ -32,11 +32,13 @@ statistics = {
     )
     for dataset in datasets.values()
 }
-attribute_symbol = '\\theta'
-attribute_units = '^\\circ'
 
 
 class InterpolateDips(Models2D):
+    datasets = datasets
+    attribute_symbol = '\\theta'
+    attribute_units = '^\\circ'
+
     Metadata = CompoundMetadata.combine(
         *(
             Predictions.construct(
@@ -61,22 +63,31 @@ class InterpolateDips(Models2D):
         ),
     )
 
-    def subplots(self, attributes):
-        nrows = len(attributes)
+    @property
+    def attributes(self):
+        attributes = self.datasets.keys()
+        return ['interpolate'], attributes
+
+    def subplots(self):
+        _, test_att = self.attributes
+        ncols = len(test_att)
         return pplt.subplots(
             nrows=1,
-            ncols=nrows * 2,
-            figsize=[7.6, 4.5],
+            ncols=ncols * 2,
+            figsize=[7.6, 1.8],
             share=True,
             wspace=([0, None]*3)[:-1],
             left=8.5,
             top=5.5,
         )
 
-    def pair(self, axs):
-        return [[axs[i], axs[i+1]] for i in range(0, len(axs), 2)]
+    def format_table(self, table):
+        _, test_att = self.attributes
+        table.index = ['']
+        table.columns = [f'${abs(a)}$' for a in test_att]
+        return table
 
-    def format(self, fig, axs, attributes, crop_top, ymax):
+    def format(self, fig, axs, crop_top, ymax):
         dh = self.dataset.model.dh
         dt = self.dataset.acquire.dt * self.dataset.acquire.resampling
         tdelay = self.dataset.acquire.tdelay
@@ -84,13 +95,10 @@ class InterpolateDips(Models2D):
         dcmp = self.dataset.acquire.ds * dh
 
         units = self.attribute_units
-        label_attributes = [f'${abs(a)}{units}$' for a in attributes]
+        _, att = self.attributes
+        label_attributes = [f'${abs(a)}{units}$' for a in att]
 
         axs[0, 0].set_ylabel("$t$ (s)")
-        for ax in axs[1:, :]:
-            ax.format(yticklabels=[])
-        for ax in axs[:, 1:]:
-            ax.format(xticklabels=[])
 
         axs.format(
             abcloc='l',
@@ -99,7 +107,6 @@ class InterpolateDips(Models2D):
             ylim=[ymax, 0],
             xscale=pplt.FuncScale(a=dcmp/1000, decimals=1),
             xlocator=125/dh,
-            leftlabels=label_attributes,
             suptitlepad=.50,
         )
         axs[-1, 0].set_xlabel("$x$ (km)")
@@ -126,6 +133,8 @@ class InterpolateDips(Models2D):
             ax.number = (ax.number-1)//2 + 1
         for i in range(0, axs.shape[1], 2):
             axs[:, i].format(abc='(a)')
+        for ax in axs[:, 1:]:
+            ax.format(xticklabels=[])
 
     def suptitles(self, fig):
         symbol = self.attribute_symbol
