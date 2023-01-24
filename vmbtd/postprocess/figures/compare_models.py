@@ -26,20 +26,17 @@ params_2d = Hyperparameters2D(is_training=False)
 params_2d.batch_size = 2
 
 
-class Models(Figure):
+class Models1D(Figure):
+    params = params_1d
+
     @classmethod
     def construct(
-        cls, name, datasets, log_subdir, is_2d,
+        cls, name, datasets, log_subdir,
         attribute_symbol, attribute_units, example_idx=0,
     ):
         cls = type(name, cls.__bases__, dict(cls.__dict__))
-        cls.is_2d = is_2d
         cls.attribute_symbol = attribute_symbol
         cls.attribute_units = attribute_units
-        if not cls.is_2d:
-            cls.params = params_1d
-        else:
-            cls.params = params_2d
         cls.datasets = {
             attribute: Dataset(cls.params)
             for attribute, Dataset in datasets.items()
@@ -85,24 +82,7 @@ class Models(Figure):
         attributes = self.datasets.keys()
         vint_meta = dataset.outputs['vint']
 
-        nrows = len(attributes)
-        if self.is_2d:
-            ncols = nrows * 2
-            figsize = [7.6, 4.5]
-            wspace = ([0, None]*3)[:-1]
-        else:
-            ncols = nrows
-            figsize = [3.3, 5]
-            wspace = None
-        fig, axs = pplt.subplots(
-            nrows=nrows,
-            ncols=ncols,
-            figsize=figsize,
-            share=True,
-            wspace=wspace,
-            left=8.5,
-            top=5.5,
-        )
+        fig, axs = self.subplots(attributes)
 
         table = pd.DataFrame(
             np.empty([len(attributes)]*2),
@@ -119,12 +99,8 @@ class Models(Figure):
             table.loc[f'${abs(source_att)}$', f'${abs(target_att)}$'] = cell
         print(table.to_latex(escape=False))
 
-        if self.is_2d:
-            axs_pairs = [[axs[i], axs[i+1]] for i in range(0, len(axs), 2)]
-        else:
-            axs_pairs = [[axs[i], axs[i]] for i in range(0, len(axs), 1)]
+        axs_pairs = self.pair(axs)
         ymax = np.inf
-        vmin, vmax = dataset.model.properties['vp']
         for (g_ax, p_ax), (value, dataset) in zip(
             axs_pairs, product(self.datasets.keys(), self.datasets.values()),
         ):
@@ -142,27 +118,38 @@ class Models(Figure):
                 except AttributeError:
                     pass
                 ymax = len(im) if len(im) < ymax else ymax
-                if self.is_2d:
-                    ax.imshow(
-                        im/1000,
-                        vmin=vmin/1000,
-                        vmax=vmax/1000,
-                        aspect='auto',
-                        cmap='inferno',
-                    )
-                else:
-                    ax.plot(
-                        im.flatten()/1000,
-                        range(len(im)),
-                    )
+                self.imshow(ax, im)
 
-        dh = dataset.model.dh
-        dt = dataset.acquire.dt * dataset.acquire.resampling
-        tdelay = dataset.acquire.tdelay
+        self.format(fig, axs, attributes, crop_top, ymax)
+        self.text(fig)
+
+    def subplots(self, attributes):
+        nrows = len(attributes)
+        return pplt.subplots(
+            nrows=nrows,
+            ncols=nrows,
+            figsize=[3.3, 5],
+            share=True,
+            wspace=None,
+            left=8.5,
+            top=5.5,
+        )
+
+    def pair(self, axs):
+        return [[axs[i], axs[i]] for i in range(0, len(axs), 1)]
+
+    def imshow(self, ax, im):
+        ax.plot(
+            im.flatten()/1000,
+            range(len(im)),
+        )
+
+    def format(self, fig, axs, attributes, crop_top, ymax):
+        dt = self.dataset.acquire.dt * self.dataset.acquire.resampling
+        tdelay = self.dataset.acquire.tdelay
         start_time = crop_top*dt - tdelay
-        dcmp = dataset.acquire.ds * dh
+        vmin, vmax = self.dataset.model.properties['vp']
 
-        symbol = self.attribute_symbol
         units = self.attribute_units
         axs.format(
             abcloc='l',
@@ -170,61 +157,116 @@ class Models(Figure):
             yscale=pplt.FuncScale(a=dt, b=start_time, decimals=1),
         )
         label_attributes = [f'${abs(a)}{units}$' for a in attributes]
-        if self.is_2d:
-            axs.format(
-                ylim=[ymax, 0],
-                xscale=pplt.FuncScale(a=dcmp/1000, decimals=1),
-                xlocator=125/dh,
-                leftlabels=label_attributes,
-                suptitlepad=.50,
-            )
-            axs[-1, 0].set_xlabel("$x$ (km)")
-            for ax, attribute in zip(
-                [axs[0, i] for i in range(0, axs.shape[1], 2)],
-                label_attributes,
-            ):
-                ax.text(
-                    x=1,
-                    y=1.25,
-                    s=attribute,
-                    transform='axes',
-                    ha='center',
-                    va='bottom',
-                    fontweight='bold',
-                    fontsize='med-large',
-                )
-            fig.colorbar(
-                axs[0].images[0],
-                label="$v_\\mathrm{int}(t, x)$ (km/s)",
-                loc='r',
-            )
-            for ax in axs:
-                ax.number = (ax.number-1)//2 + 1
-            for i in range(0, axs.shape[1], 2):
-                axs[:, i].format(abc='(a)')
-        else:
-            axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
-            axs.format(
-                abc='(a)',
-                ylim=[ymax, 0],
-                xlim=[vmin/1000, vmax/1000],
-                leftlabels=label_attributes,
-                toplabels=label_attributes,
-            )
-            fig.legend(
-                handles=axs[0].get_lines(),
-                labels=['Cible', 'Prédiction'],
-                loc='b'
-            )
         axs[0, 0].set_ylabel("$t$ (s)")
         for ax in axs[1:, :]:
             ax.format(yticklabels=[])
         for ax in axs[:, 1:]:
             ax.format(xticklabels=[])
 
+        axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
+        axs.format(
+            abc='(a)',
+            ylim=[ymax, 0],
+            xlim=[vmin/1000, vmax/1000],
+            leftlabels=label_attributes,
+            toplabels=label_attributes,
+        )
+        fig.legend(
+            handles=axs[0].get_lines(),
+            labels=['Cible', 'Prédiction'],
+            loc='b'
+        )
+
+    def get_suptitles_loc(self):
+        # x_top, y_top, x_left, y_left
+        return .63, .96, .07, .53
+
+
+class Models2D(Models1D):
+    params = params_2d
+
+    def subplots(self, attributes):
+        nrows = len(attributes)
+        return pplt.subplots(
+            nrows=nrows,
+            ncols=nrows * 2,
+            figsize=[7.6, 4.5],
+            share=True,
+            wspace=([0, None]*3)[:-1],
+            left=8.5,
+            top=5.5,
+        )
+
+    def pair(self, axs):
+        return [[axs[i], axs[i+1]] for i in range(0, len(axs), 2)]
+
+    def imshow(self, ax, im):
+        vmin, vmax = self.dataset.model.properties['vp']
+        ax.imshow(
+            im/1000,
+            vmin=vmin/1000,
+            vmax=vmax/1000,
+            aspect='auto',
+            cmap='inferno',
+        )
+
+    def format(self, fig, axs, attributes, crop_top, ymax):
+        dh = self.dataset.model.dh
+        dt = self.dataset.acquire.dt * self.dataset.acquire.resampling
+        tdelay = self.dataset.acquire.tdelay
+        start_time = crop_top*dt - tdelay
+        dcmp = self.dataset.acquire.ds * dh
+
+        units = self.attribute_units
+        label_attributes = [f'${abs(a)}{units}$' for a in attributes]
+
+        axs[0, 0].set_ylabel("$t$ (s)")
+        for ax in axs[1:, :]:
+            ax.format(yticklabels=[])
+        for ax in axs[:, 1:]:
+            ax.format(xticklabels=[])
+
+        axs.format(
+            abcloc='l',
+            title="",
+            yscale=pplt.FuncScale(a=dt, b=start_time, decimals=1),
+            ylim=[ymax, 0],
+            xscale=pplt.FuncScale(a=dcmp/1000, decimals=1),
+            xlocator=125/dh,
+            leftlabels=label_attributes,
+            suptitlepad=.50,
+        )
+        axs[-1, 0].set_xlabel("$x$ (km)")
+        for ax, attribute in zip(
+            [axs[0, i] for i in range(0, axs.shape[1], 2)],
+            label_attributes,
+        ):
+            ax.text(
+                x=1,
+                y=1.25,
+                s=attribute,
+                transform='axes',
+                ha='center',
+                va='bottom',
+                fontweight='bold',
+                fontsize='med-large',
+            )
+        fig.colorbar(
+            axs[0].images[0],
+            label="$v_\\mathrm{int}(t, x)$ (km/s)",
+            loc='r',
+        )
+        for ax in axs:
+            ax.number = (ax.number-1)//2 + 1
+        for i in range(0, axs.shape[1], 2):
+            axs[:, i].format(abc='(a)')
+
+    def suptitles(self, fig):
+        symbol = self.attribute_symbol
+        x_top, y_top, x_left, y_left = self.get_suptitles_loc()
         fig.text(
-            x=.5 if self.is_2d else .63,
-            y=.96 if self.is_2d else .96,
+            x=x_top,
+            y=y_top,
             s=f"${symbol}_\\mathrm{{test}}$",
             fontweight='bold',
             fontsize='large',
@@ -232,8 +274,8 @@ class Models(Figure):
             va='bottom',
         )
         fig.text(
-            x=.03 if self.is_2d else .07,
-            y=.5 if self.is_2d else .53,
+            x=x_left,
+            y=y_left,
             s=f"${symbol}_\\mathrm{{ent.}}$",
             fontweight='bold',
             fontsize='large',
@@ -242,26 +284,31 @@ class Models(Figure):
             va='center',
         )
 
+    def get_suptitles_loc(self):
+        # x_top, y_top, x_left, y_left
+        return .5, .96, .03, .5
 
-Dips = Models.construct(
-    'Dips', Article2DDip, 'dips', is_2d=True, example_idx=3,
-    attribute_symbol='\\theta', attribute_units='^\\circ'
-)
-Faults = Models.construct(
-    'Faults', Article2DFault, 'faults', is_2d=True,
-    attribute_symbol='d', attribute_units='~\\mathrm{m}'
-)
-DZMaxs = Models.construct(
-    'DZMaxs', Article1DDZMax, 'dzmaxs', is_2d=False, example_idx=0,
+
+DZMaxs = Models1D.construct(
+    'DZMaxs', Article1DDZMax, 'dzmaxs', example_idx=0,
     attribute_symbol='\\Delta{V}', attribute_units='~\\mathrm{m/s}'
 )
 DZMaxs.filename = 'dzmaxs.pdf'
-Freqs = Models.construct(
-    'Freqs', Article1DFreq, 'freqs', is_2d=False,
+Freqs = Models1D.construct(
+    'Freqs', Article1DFreq, 'freqs', example_idx=0,
     attribute_symbol='f', attribute_units='~\\mathrm{Hz}'
 )
+DIPS_EXAMPLE_IDX = 3
+Dips = Models2D.construct(
+    'Dips', Article2DDip, 'dips', example_idx=DIPS_EXAMPLE_IDX,
+    attribute_symbol='\\theta', attribute_units='^\\circ'
+)
+Faults = Models2D.construct(
+    'Faults', Article2DFault, 'faults', example_idx=DIPS_EXAMPLE_IDX,
+    attribute_symbol='d', attribute_units='~\\mathrm{m}'
+)
 
-catalog.register(Dips)
-catalog.register(Faults)
 catalog.register(DZMaxs)
 catalog.register(Freqs)
+catalog.register(Dips)
+catalog.register(Faults)
