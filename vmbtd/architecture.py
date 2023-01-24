@@ -147,7 +147,9 @@ class RCNN2DRegressor(RCNN2D):
         name="rnn",
     ):
         input_shape = input_shape[1:]
-        input = Input(shape=input_shape, batch_size=batch_size, dtype=input_dtype)
+        input = Input(
+            shape=input_shape, batch_size=batch_size, dtype=input_dtype,
+        )
         data_stream = Permute((2, 1, 3))(input)
         batches, shots, timesteps, filter_dim = data_stream.get_shape()
         data_stream = reshape(
@@ -312,18 +314,14 @@ class Hyperparameters2D(Hyperparameters1D):
 
         self.batch_size = 2
 
-        self.learning_rate = 8E-5
+        self.learning_rate = 8E-4
 
         self.encoder_kernels = [
             [15, 1, 1],
-            [1, 9, 1],
-            [1, 1, 9],
+            [1, 9, 3],
             [15, 1, 1],
-            [1, 9, 1],
-            [1, 1, 9],
+            [1, 9, 3],
         ]
-        self.encoder_dilations = [[1, 1, 1]] * 6
-        self.encoder_filters = [16]*3 + [32]*3
         self.rcnn_kernel = [15, 3, 3]
 
 
