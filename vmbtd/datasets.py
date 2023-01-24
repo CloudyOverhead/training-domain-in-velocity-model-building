@@ -275,25 +275,64 @@ Article2DFault = {
 }
 
 
-class MarineModel(MarineModel):
-    def generate_model(self, *args, seed=None, **kwargs):
-        is_2d = self.dip_max > 0
-        self.layer_num_min = 5
-        if seed is None:
-            seed = np.random.randint(0, 20000)
-        if not is_2d:
-            if seed < 5000:
-                self.layer_dh_max = 500
-            if seed < 10000:
-                self.layer_dh_max = 200
+class InterpolateDips(Article2D):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.subsets = {
+            dip: dataset(*args, **kwargs)
+            for dip, dataset in Article2DDip.items()
+            if dip != 0
+        }
+        self.current_epoch = -1
+
+    @property
+    def proportions(self):
+        return [
+            sum(dataset.name in f for f in self.files[self.phase])
+            for dataset in self.subsets.values()
+        ]
+
+    def tfdataset(self, phase='train', *args, **kwargs):
+        if phase == "validate" and self.validatesize == 0:
+            return
+        super().tfdataset(phase, *args, **kwargs)
+        self.subsets = {
+            dip: subset.tfdataset(phase, *args, **kwargs)
+            for dip, subset in self.subsets.items()
+        }
+        for subset in self.subsets.values():
+            subset.tfdataset(phase, *args, **kwargs)
+        self.files = self.subsets[10].files
+        np.random.shuffle(self.files[self.phase])
+        self.iter_examples = cycle(self.files[self.phase])
+        self.on_batch_end()
+        self.on_epoch_end()
+        return self
+
+    def on_epoch_end(self):
+        self.current_epoch += 1
+        for _ in range(5):
+            if self.current_epoch > 20 and self.current_epoch % 2 == 1:
+                self.replace_file(25, 40)
             else:
-                self.layer_dh_max = 50
-        else:
-            self.layer_num_min = 50
-        return super().generate_model(
-            *args, seed=seed, **kwargs,
+                self.replace_file(10, 25)
+        np.random.shuffle(self.files[self.phase])
+        self.iter_examples = cycle(self.files[self.phase])
+
+    def replace_file(self, source_dip, target_dip):
+        source_dataset = self.subsets[source_dip]
+        target_dataset = self.subsets[target_dip]
+        replaceable = [
+            f for f in self.files[self.phase] if source_dataset.name in f
+        ]
+        file = np.random.choice(replaceable)
+        idx = self.files[self.phase].index(file)
+        self.files[self.phase][idx] = file.replace(
+            source_dataset.name, target_dataset.name,
         )
 
+
+class MarineModel(MarineModel):
     def build_stratigraphy(self):
         self.thick0min = int(self.water_dmin/self.dh)
         self.thick0max = int(self.water_dmax/self.dh)

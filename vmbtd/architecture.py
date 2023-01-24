@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from os import mkdir
-from os.path import join, isdir
+from os.path import join, isdir, curdir
 from functools import partial as _partial, update_wrapper
 
 import numpy as np
@@ -323,6 +323,15 @@ class Hyperparameters2D(Hyperparameters1D):
             [1, 9, 3],
         ]
         self.rcnn_kernel = [15, 3, 3]
+
+
+class Hyperparameters2DInterpolate(Hyperparameters2D):
+    def __init__(self, is_training=True):
+        super().__init__(is_training=is_training)
+        self.learning_rate = 8E-6
+        self.epochs = 40
+        self.loss_scales = {'ref': .1, 'vrms': .2, 'vint': .7, 'vdepth': .0}
+        self.restore_from = join(curdir, 'logs', 'dips', '10', 'checkpoint_40')
 
 
 def stochastic_v_loss(decode_bins, scale=1):
