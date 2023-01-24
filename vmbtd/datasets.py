@@ -265,13 +265,13 @@ Article2DDip = {
     dip_max: Article2D.construct(
         suffix=f'Dip{dip_max}', dip_max=dip_max,
     )
-    for dip_max in [0, 10, 25, 40]
+    for dip_max in [10, 25, 40]
 }
 Article2DFault = {
     displ: Article2D.construct(
         suffix=f'Fault{displ}', fault_displ_min=displ, fault_prob=1,
     )
-    for displ in [-100, -200, -400, -800]
+    for displ in [-200, -400, -800]
 }
 
 

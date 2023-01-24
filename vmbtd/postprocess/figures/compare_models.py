@@ -85,26 +85,27 @@ class Models(Figure):
         attributes = self.datasets.keys()
         vint_meta = dataset.outputs['vint']
 
+        nrows = len(attributes)
         if self.is_2d:
-            ncols = 4 * 2
+            ncols = nrows * 2
             figsize = [7.6, 4.5]
-            wspace = ([0, None]*4)[:-1]
+            wspace = ([0, None]*3)[:-1]
         else:
-            ncols = 4
+            ncols = nrows
             figsize = [3.3, 5]
             wspace = None
         fig, axs = pplt.subplots(
-            nrows=4,
+            nrows=nrows,
             ncols=ncols,
             figsize=figsize,
             share=True,
             wspace=wspace,
             left=8.5,
-            top=5,
+            top=5.5,
         )
 
         table = pd.DataFrame(
-            np.empty([4, 4]),
+            np.empty([len(attributes)]*2),
             index=[f'${abs(a)}$' for a in attributes],
             columns=[f'${abs(a)}$' for a in attributes],
             dtype=str,
@@ -204,8 +205,8 @@ class Models(Figure):
         else:
             axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
             axs.format(
-                ylim=[0, ymax],
-                yreverse=True,
+                abc='(a)',
+                ylim=[ymax, 0],
                 xlim=[vmin/1000, vmax/1000],
                 leftlabels=label_attributes,
                 toplabels=label_attributes,
@@ -223,17 +224,17 @@ class Models(Figure):
 
         fig.text(
             x=.5 if self.is_2d else .63,
-            y=.95 if self.is_2d else .95,
-            s=f"${symbol}_\\mathrm{{ent.}}$",
+            y=.96 if self.is_2d else .96,
+            s=f"${symbol}_\\mathrm{{test}}$",
             fontweight='bold',
             fontsize='large',
             ha='center',
             va='bottom',
         )
         fig.text(
-            x=.03 if self.is_2d else .06,
+            x=.03 if self.is_2d else .07,
             y=.5 if self.is_2d else .53,
-            s=f"${symbol}_\\mathrm{{test}}$",
+            s=f"${symbol}_\\mathrm{{ent.}}$",
             fontweight='bold',
             fontsize='large',
             rotation=90,
