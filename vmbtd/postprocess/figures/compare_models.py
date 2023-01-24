@@ -77,32 +77,38 @@ class Models1D(Figure):
         )
         return cls
 
-    def plot(self, data):
-        dataset = next(iter(self.datasets.values()))
+    @property
+    def attributes(self):
         attributes = self.datasets.keys()
+        return attributes, attributes
+
+    def plot(self, data):
+        self.dataset = dataset = next(iter(self.datasets.values()))
+        train_att, test_att = self.attributes
         vint_meta = dataset.outputs['vint']
 
-        fig, axs = self.subplots(attributes)
+        fig, axs = self.subplots()
 
         table = pd.DataFrame(
-            np.empty([len(attributes)]*2),
-            index=[f'${abs(a)}$' for a in attributes],
-            columns=[f'${abs(a)}$' for a in attributes],
+            np.empty([len(train_att), len(test_att)]),
             dtype=str,
         )
         name = dataset.name.rstrip(digits+'-')
-        for source_att, target_att in product(attributes, attributes):
+        for (i, source_att), (j, target_att) in product(
+            enumerate(train_att), enumerate(test_att),
+        ):
             key = f'Statistics_{name}{target_att}_{source_att}'
             statistics = data[key]
             metric = statistics['rmses']
             cell = f"${round(metric.mean())} \\pm {round(metric.std())}$"
-            table.loc[f'${abs(source_att)}$', f'${abs(target_att)}$'] = cell
+            table.loc[i, j] = cell
+        table = self.format_table(table)
         print(table.to_latex(escape=False))
 
         axs_pairs = self.pair(axs)
         ymax = np.inf
         for (g_ax, p_ax), (value, dataset) in zip(
-            axs_pairs, product(self.datasets.keys(), self.datasets.values()),
+            axs_pairs, product(train_att, self.datasets.values()),
         ):
             example = data[f'SelectExample_{dataset.name}_{value}']
             label = example['labels/vint']
@@ -120,20 +126,28 @@ class Models1D(Figure):
                 ymax = len(im) if len(im) < ymax else ymax
                 self.imshow(ax, im)
 
-        self.format(fig, axs, attributes, crop_top, ymax)
-        self.text(fig)
+        self.format(fig, axs, crop_top, ymax)
+        self.suptitles(fig)
 
     def subplots(self, attributes):
-        nrows = len(attributes)
+        train_att, test_att = self.attributes
+        nrows = len(train_att)
+        ncols = len(test_att)
         return pplt.subplots(
             nrows=nrows,
-            ncols=nrows,
+            ncols=ncols,
             figsize=[3.3, 5],
             share=True,
             wspace=None,
             left=8.5,
             top=5.5,
         )
+
+    def format_table(self, table):
+        train_att, test_att = self.attributes
+        table.index = [f'${abs(a)}$' for a in train_att]
+        table.columns = [f'${abs(a)}$' for a in test_att]
+        return table
 
     def pair(self, axs):
         return [[axs[i], axs[i]] for i in range(0, len(axs), 1)]
@@ -144,7 +158,7 @@ class Models1D(Figure):
             range(len(im)),
         )
 
-    def format(self, fig, axs, attributes, crop_top, ymax):
+    def format(self, fig, axs, crop_top, ymax):
         dt = self.dataset.acquire.dt * self.dataset.acquire.resampling
         tdelay = self.dataset.acquire.tdelay
         start_time = crop_top*dt - tdelay
@@ -156,14 +170,9 @@ class Models1D(Figure):
             title="",
             yscale=pplt.FuncScale(a=dt, b=start_time, decimals=1),
         )
-        label_attributes = [f'${abs(a)}{units}$' for a in attributes]
-        axs[0, 0].set_ylabel("$t$ (s)")
-        for ax in axs[1:, :]:
-            ax.format(yticklabels=[])
-        for ax in axs[:, 1:]:
-            ax.format(xticklabels=[])
+        att, _ = self.attributes
+        label_attributes = [f'${abs(a)}{units}$' for a in att]
 
-        axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
         axs.format(
             abc='(a)',
             ylim=[ymax, 0],
@@ -177,6 +186,36 @@ class Models1D(Figure):
             loc='b'
         )
 
+        axs[0, 0].set_ylabel("$t$ (s)")
+        axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
+        for ax in axs[1:, :]:
+            ax.format(yticklabels=[])
+        for ax in axs[:, 1:]:
+            ax.format(xticklabels=[])
+
+    def suptitles(self, fig):
+        symbol = self.attribute_symbol
+        x_top, y_top, x_left, y_left = self.get_suptitles_loc()
+        fig.text(
+            x=x_top,
+            y=y_top,
+            s=f"${symbol}_\\mathrm{{test}}$",
+            fontweight='bold',
+            fontsize='large',
+            ha='center',
+            va='bottom',
+        )
+        fig.text(
+            x=x_left,
+            y=y_left,
+            s=f"${symbol}_\\mathrm{{ent.}}$",
+            fontweight='bold',
+            fontsize='large',
+            rotation=90,
+            ha='right',
+            va='center',
+        )
+
     def get_suptitles_loc(self):
         # x_top, y_top, x_left, y_left
         return .63, .96, .07, .53
@@ -185,11 +224,13 @@ class Models1D(Figure):
 class Models2D(Models1D):
     params = params_2d
 
-    def subplots(self, attributes):
-        nrows = len(attributes)
+    def subplots(self):
+        train_att, test_att = self.attributes
+        nrows = len(train_att)
+        ncols = len(test_att)
         return pplt.subplots(
             nrows=nrows,
-            ncols=nrows * 2,
+            ncols=ncols * 2,
             figsize=[7.6, 4.5],
             share=True,
             wspace=([0, None]*3)[:-1],
@@ -210,7 +251,7 @@ class Models2D(Models1D):
             cmap='inferno',
         )
 
-    def format(self, fig, axs, attributes, crop_top, ymax):
+    def format(self, fig, axs, crop_top, ymax):
         dh = self.dataset.model.dh
         dt = self.dataset.acquire.dt * self.dataset.acquire.resampling
         tdelay = self.dataset.acquire.tdelay
@@ -218,13 +259,8 @@ class Models2D(Models1D):
         dcmp = self.dataset.acquire.ds * dh
 
         units = self.attribute_units
-        label_attributes = [f'${abs(a)}{units}$' for a in attributes]
-
-        axs[0, 0].set_ylabel("$t$ (s)")
-        for ax in axs[1:, :]:
-            ax.format(yticklabels=[])
-        for ax in axs[:, 1:]:
-            ax.format(xticklabels=[])
+        att, _ = self.attributes
+        label_attributes = [f'${abs(a)}{units}$' for a in att]
 
         axs.format(
             abcloc='l',
@@ -236,7 +272,6 @@ class Models2D(Models1D):
             leftlabels=label_attributes,
             suptitlepad=.50,
         )
-        axs[-1, 0].set_xlabel("$x$ (km)")
         for ax, attribute in zip(
             [axs[0, i] for i in range(0, axs.shape[1], 2)],
             label_attributes,
@@ -261,28 +296,12 @@ class Models2D(Models1D):
         for i in range(0, axs.shape[1], 2):
             axs[:, i].format(abc='(a)')
 
-    def suptitles(self, fig):
-        symbol = self.attribute_symbol
-        x_top, y_top, x_left, y_left = self.get_suptitles_loc()
-        fig.text(
-            x=x_top,
-            y=y_top,
-            s=f"${symbol}_\\mathrm{{test}}$",
-            fontweight='bold',
-            fontsize='large',
-            ha='center',
-            va='bottom',
-        )
-        fig.text(
-            x=x_left,
-            y=y_left,
-            s=f"${symbol}_\\mathrm{{ent.}}$",
-            fontweight='bold',
-            fontsize='large',
-            rotation=90,
-            ha='right',
-            va='center',
-        )
+        axs[0, 0].set_ylabel("$t$ (s)")
+        axs[-1, 0].set_xlabel("$x$ (km)")
+        for ax in axs[1:, :]:
+            ax.format(yticklabels=[])
+        for ax in axs[:, 1:]:
+            ax.format(xticklabels=[])
 
     def get_suptitles_loc(self):
         # x_top, y_top, x_left, y_left
