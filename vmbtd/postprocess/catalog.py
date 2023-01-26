@@ -159,7 +159,10 @@ class Figure(Figure):
     def save(self, show=True):
         plt.savefig(self.filepath, transparent=True)
         if show:
+            dpi = plt.gcf().get_dpi()
+            plt.gcf().set_dpi(200)
             plt.show()
+            plt.gcf().set_dpi(dpi)
         else:
             plt.clf()
         plt.close()
