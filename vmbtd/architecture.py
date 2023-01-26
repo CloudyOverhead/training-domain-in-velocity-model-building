@@ -328,10 +328,13 @@ class Hyperparameters2D(Hyperparameters1D):
 class Hyperparameters2DInterpolate(Hyperparameters2D):
     def __init__(self, is_training=True):
         super().__init__(is_training=is_training)
-        self.learning_rate = 8E-6
+        self.learning_rate = 8E-4
         self.epochs = 40
         self.loss_scales = {'ref': .1, 'vrms': .2, 'vint': .7, 'vdepth': .0}
-        self.restore_from = join(curdir, 'logs', 'dips', '10', 'checkpoint_40')
+        if is_training:
+            self.restore_from = join(
+                curdir, 'logs', 'dips', '10', 'checkpoint_40'
+            )
 
 
 def stochastic_v_loss(decode_bins, scale=1):

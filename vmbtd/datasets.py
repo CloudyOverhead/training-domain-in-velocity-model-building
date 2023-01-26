@@ -312,10 +312,9 @@ class InterpolateDips(Article2D):
     def on_epoch_end(self):
         self.current_epoch += 1
         for _ in range(5):
-            if self.current_epoch > 20 and self.current_epoch % 2 == 1:
+            if self.current_epoch > 20:
                 self.replace_file(25, 40)
-            else:
-                self.replace_file(10, 25)
+            self.replace_file(10, 25)
         np.random.shuffle(self.files[self.phase])
         self.iter_examples = cycle(self.files[self.phase])
 
