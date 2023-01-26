@@ -187,7 +187,7 @@ class Models1D(Figure):
         )
 
         axs[0, 0].set_ylabel("$t$ (s)")
-        axs[-1, 0].set_xlabel("$v_\\mathrm{int}(t)$\n(km/s)")
+        axs[-1, 0].set_xlabel("$V(t)$\n(km/s)")
         for ax in axs[1:, :]:
             ax.format(yticklabels=[])
         for ax in axs[:, 1:]:
@@ -288,7 +288,7 @@ class Models2D(Models1D):
             )
         fig.colorbar(
             axs[0].images[0],
-            label="$v_\\mathrm{int}(t, x)$ (km/s)",
+            label="$V(t, x)$ (km/s)",
             loc='r',
         )
         for ax in axs:
