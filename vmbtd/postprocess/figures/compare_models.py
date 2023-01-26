@@ -129,7 +129,7 @@ class Models1D(Figure):
         self.format(fig, axs, crop_top, ymax)
         self.suptitles(fig)
 
-    def subplots(self, attributes):
+    def subplots(self):
         train_att, test_att = self.attributes
         nrows = len(train_att)
         ncols = len(test_att)
