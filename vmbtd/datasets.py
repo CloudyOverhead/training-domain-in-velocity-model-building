@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 
+from os import makedirs
 from os.path import abspath, join
 from glob import glob
-from itertools import cycle
+from itertools import cycle, chain
 from copy import copy
+from shutil import copy as fcopy
 
 import numpy as np
 from ModelGenerator import (
@@ -20,8 +22,6 @@ from GeoFlow.GraphIO import (
 )
 from natsort import natsorted as sorted
 
-EXPECTED_WIDTH = 1
-NS = 2182
 
 
 DistributeOptions.auto_shard_policy = options_lib.create_option(
@@ -94,7 +94,7 @@ class Dataset(GeoDataset, Sequence):
             np.random.shuffle(self.files[self.phase])
         self.iter_examples = cycle(self.files[self.phase])
 
-        self.on_batch_end()
+        self.on_epoch_end()
 
         return copy(self)
 
@@ -124,7 +124,7 @@ class Dataset(GeoDataset, Sequence):
     def __len__(self):
         return int(len(self.files[self.phase]) / self.batch_size)
 
-    def on_batch_end(self):
+    def on_epoch_end(self):
         self.batches_idx = np.arange(len(self) * self.batch_size)
         if self.shuffle:
             self.batches_idx = np.random.choice(
@@ -144,6 +144,7 @@ class Article1D(Dataset):
     dip_max = 1E-2
     fault_displ_min = 0
     fault_prob = 0
+    dh = 6.25
 
     @classmethod
     def construct(cls, suffix='', **attributes):
@@ -161,7 +162,7 @@ class Article1D(Dataset):
         self.testsize = 100
 
         model = MarineModel()
-        model.dh = 6.25
+        model.dh = self.dh
         model.NX = 692 * 2
         model.NZ = 752 * 2
         model.layer_num_min = 48
@@ -222,18 +223,38 @@ class Article1D(Dataset):
         return model, acquire, inputs, outputs
 
 
-Article1DDZMax = {
-    dzmax: Article1D.construct(
-        suffix=f'DZMax{dzmax}', dzmax=dzmax,
-    )
-    for dzmax in [250, 500, 1000, 2000]
-}
-Article1DFreq = {
-    peak_freq: Article1D.construct(
-        suffix=f'Freq{peak_freq}', peak_freq=peak_freq,
-    )
-    for peak_freq in [10, 15, 25, 40]
-}
+class Article1DDZMaxAll(Article1D):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.subsets = {
+            dzmax: dataset(*args, **kwargs)
+            for dzmax, dataset in Article1DDZMax.items()
+            if dzmax != 'all'
+        }
+        self.trainsize = 600
+
+    def tfdataset(self, phase='train', *args, **kwargs):
+        if phase == "validate" and self.validatesize == 0:
+            return
+        super().tfdataset(phase, *args, **kwargs)
+        self.subsets = {
+            dip: subset.tfdataset(phase, *args, **kwargs)
+            for dip, subset in self.subsets.items()
+        }
+        for subset in self.subsets.values():
+            subset.tfdataset(phase, *args, **kwargs)
+        self.files = {
+            key: list(
+                chain(
+                    *(subset.files[key] for subset in self.subsets.values())
+                )
+            )
+            for key in ['train', 'validate', 'test']
+        }
+        np.random.shuffle(self.files[self.phase])
+        self.iter_examples = cycle(self.files[self.phase])
+        self.on_epoch_end()
+        return self
 
 
 class Article2D(Article1D):
@@ -241,7 +262,6 @@ class Article2D(Article1D):
         model, acquire, inputs, outputs = Article1D.set_dataset(self)
 
         self.trainsize = 200
-        self.validatesize = 0
         self.testsize = 10
 
         model.max_deform_freq = .06
@@ -261,17 +281,109 @@ class Article2D(Article1D):
         return model, acquire, inputs, outputs
 
 
-Article2DDip = {
-    dip_max: Article2D.construct(
-        suffix=f'Dip{dip_max}', dip_max=dip_max,
+class Article2DDip(Article2D):
+    def set_dataset(self):
+        model, acquire, inputs, outputs = Article2D.set_dataset(self)
+
+        self.trainsize = 200
+
+        model.dh /= 2
+        model.NX *= 2
+        model.NZ *= 2
+        acquire.dg *= 2
+        acquire.ds *= 2
+        acquire.gmin *= 2
+        acquire.gmax *= 2
+
+        acquire.dt /= 2
+        acquire.NT *= 2
+        acquire.resampling *= 2
+
+        inputs = {
+            ShotGather.name: ShotGatherCrop(model=model, acquire=acquire)
+        }
+        bins = self.params.decode_bins
+        outputs = {
+            Reftime.name: ReftimeCrop(model=model, acquire=acquire),
+            Vrms.name: VrmsCrop(model=model, acquire=acquire, bins=bins),
+            Vint.name: VintCrop(model=model, acquire=acquire, bins=bins),
+            Vdepth.name: VdepthCrop(model=model, acquire=acquire, bins=bins),
+        }
+        for input in inputs.values():
+            input.train_on_shots = False
+            input.mute_dir = True
+        for output in outputs.values():
+            output.train_on_shots = False
+            output.identify_direct = False
+
+        return model, acquire, inputs, outputs
+
+
+class DatasetPlaceholder(Article1D):
+    @classmethod
+    def construct(cls, name):
+        cls = type(name, cls.__bases__, dict(cls.__dict__))
+        return cls
+
+    def set_dataset(self, *args, **kwargs):
+        model, acquire, inputs, outputs = Article1D.set_dataset(
+            self, *args, **kwargs,
+        )
+        self.trainsize = 200
+        self.testsize = 10
+        return model, acquire, inputs, outputs
+
+    def generate_dataset(self, *args, **kwargs):
+        dataset = Article1DDZMax[1000](self.params)
+        makedirs(self.datatest)
+        for i in range(self.trainsize, self.trainsize+self.testsize):
+            src = join(dataset.datatrain, f'example_{i}')
+            dst = join(self.datatest, f'example_{i}')
+            fcopy(src, dst)
+
+    def get_example(self, *args, **kwargs):
+        NS = 52
+
+        *dicts, filename = Article1D.get_example(self, *args, **kwargs)
+        for dict in dicts:
+            for key, array in dict.items():
+                axis = -1 if array.ndim == 2 else -2
+                array = np.repeat(array, NS, axis=axis)
+                dict[key] = array
+        return (*dicts, filename)
+
+
+Article1DDZMax = {
+    **{
+        dzmax: Article1D.construct(
+            suffix=f'DZMax{dzmax}', dzmax=dzmax,
+        )
+        for dzmax in [250, 500, 1000, 2000]
+    },
+}
+Article1DFreq = {
+    peak_freq: Article1D.construct(
+        suffix=f'Freq{peak_freq}', peak_freq=peak_freq,
     )
-    for dip_max in [10, 25, 40]
+    for peak_freq in [10, 15, 25, 40]
+}
+Article2DDip = {
+    # 0: Article1D.construct(suffix='DZMax1000'),
+    **{
+        dip_max: Article2DDip.construct(
+            suffix=f'{dip_max}', dip_max=dip_max,
+        )
+        for dip_max in [10, 25, 40]
+    },
 }
 Article2DFault = {
-    displ: Article2D.construct(
-        suffix=f'Fault{displ}', fault_displ_min=displ, fault_prob=1,
-    )
-    for displ in [-200, -400, -800]
+    0: DatasetPlaceholder.construct('Article2DFault0'),
+    **{
+        displ: Article2D.construct(
+            suffix=f'Fault{displ}', fault_displ_min=displ, fault_prob=1,
+        )
+        for displ in [-200, -400]
+    },
 }
 
 
@@ -305,7 +417,6 @@ class InterpolateDips(Article2D):
         self.files = self.subsets[10].files
         np.random.shuffle(self.files[self.phase])
         self.iter_examples = cycle(self.files[self.phase])
-        self.on_batch_end()
         self.on_epoch_end()
         return self
 

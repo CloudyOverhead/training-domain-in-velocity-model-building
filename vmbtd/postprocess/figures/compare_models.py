@@ -9,7 +9,8 @@ import proplot as pplt
 import pandas as pd
 
 from vmbtd.datasets import (
-    Article2DDip, Article2DFault, Article1DDZMax, Article1DFreq,
+    Article1DDZMax, Article1DDZMaxAll, Article1DFreq, Article2DDip,
+    Article2DFault,
 )
 from vmbtd.architecture import (
     RCNN2DClassifier as RCNN2D, Hyperparameters1D, Hyperparameters2D,
@@ -32,7 +33,7 @@ class Models1D(Figure):
     @classmethod
     def construct(
         cls, name, datasets, log_subdir,
-        attribute_symbol, attribute_units, example_idx=0,
+        attribute_symbol, attribute_units, example_idx=0, train_att=None,
     ):
         cls = type(name, cls.__bases__, dict(cls.__dict__))
         cls.attribute_symbol = attribute_symbol
@@ -41,6 +42,10 @@ class Models1D(Figure):
             attribute: Dataset(cls.params)
             for attribute, Dataset in datasets.items()
         }
+        if train_att is None:
+            cls.train_att = cls.datasets.keys()
+        else:
+            cls.train_att = train_att
         cls.statistics = {
             (dataset, attribute): Statistics.construct(
                 nn=RCNN2D,
@@ -48,20 +53,20 @@ class Models1D(Figure):
                 savedir=str(attribute),
             )
             for dataset in cls.datasets.values()
-            for attribute in cls.datasets.keys()
+            for attribute in cls.train_att
         }
         cls.Metadata = CompoundMetadata.combine(
             *(
                 Predictions.construct(
                     nn=RCNN2D,
-                    params=cls.params,
+                    params=params_1d if attribute == 0 else cls.params,
                     logdir=join('logs', log_subdir, str(attribute)),
                     savedir=str(attribute),
                     dataset=dataset,
                     unique_suffix=str(attribute),
                 )
                 for dataset in cls.datasets.values()
-                for attribute in cls.datasets.keys()
+                for attribute in cls.train_att
             ),
             *cls.statistics.values(),
             *(
@@ -72,15 +77,14 @@ class Models1D(Figure):
                     SelectorMetadata=cls.statistics[(dataset, attribute)],
                 )
                 for dataset in cls.datasets.values()
-                for attribute in cls.datasets.keys()
+                for attribute in cls.train_att
             ),
         )
         return cls
 
     @property
     def attributes(self):
-        attributes = self.datasets.keys()
-        return attributes, attributes
+        return self.train_att, self.datasets.keys()
 
     def plot(self, data):
         self.dataset = dataset = next(iter(self.datasets.values()))
@@ -145,8 +149,12 @@ class Models1D(Figure):
 
     def format_table(self, table):
         train_att, test_att = self.attributes
-        table.index = [f'${abs(a)}$' for a in train_att]
-        table.columns = [f'${abs(a)}$' for a in test_att]
+        table.index = [
+            f'${abs(a)}$' if isinstance(a, int) else a for a in train_att
+        ]
+        table.columns = [
+            f'${abs(a)}$' if isinstance(a, int) else a for a in test_att
+        ]
         return table
 
     def pair(self, axs):
@@ -170,15 +178,22 @@ class Models1D(Figure):
             title="",
             yscale=pplt.FuncScale(a=dt, b=start_time, decimals=1),
         )
-        att, _ = self.attributes
-        label_attributes = [f'${abs(a)}{units}$' for a in att]
+        train_att, test_att = self.attributes
+        train_att = [
+            f'${abs(a)}{units}$' if isinstance(a, int) else a
+            for a in train_att
+        ]
+        test_att = [
+            f'${abs(a)}{units}$' if isinstance(a, int) else a
+            for a in test_att
+        ]
 
         axs.format(
             abc='(a)',
             ylim=[ymax, 0],
             xlim=[vmin/1000, vmax/1000],
-            leftlabels=label_attributes,
-            toplabels=label_attributes,
+            leftlabels=train_att,
+            toplabels=test_att,
         )
         fig.legend(
             handles=axs[0].get_lines(),
@@ -188,8 +203,9 @@ class Models1D(Figure):
 
         axs[0, 0].set_ylabel("$t$ (s)")
         axs[-1, 0].set_xlabel("$V(t)$\n(km/s)")
-        for ax in axs[1:, :]:
-            ax.format(yticklabels=[])
+        if axs.shape[0] > 1:
+            for ax in axs[1:, :]:
+                ax.format(yticklabels=[])
         for ax in axs[:, 1:]:
             ax.format(xticklabels=[])
 
@@ -221,6 +237,45 @@ class Models1D(Figure):
         return .63, .96, .07, .53
 
 
+class Models1DAll(Models1D):
+    def subplots(self):
+        train_att, test_att = self.attributes
+        nrows = len(train_att)
+        ncols = len(test_att)
+        return pplt.subplots(
+            nrows=nrows,
+            ncols=ncols,
+            figsize=[3.3, 2.5],
+            share=True,
+            wspace=None,
+            left=4.5,
+            top=6.5,
+        )
+
+    def format(self, fig, axs, crop_top, ymax):
+        Models1D.format(self, fig, axs, crop_top, ymax)
+        axs.format(
+            leftlabels=[''],
+        )
+
+    def get_suptitles_loc(self):
+        # x_top, y_top, x_left, y_left
+        return .57, .92, None, None
+
+    def suptitles(self, fig):
+        symbol = self.attribute_symbol
+        x_top, y_top, x_left, y_left = self.get_suptitles_loc()
+        fig.text(
+            x=x_top,
+            y=y_top,
+            s=f"${symbol}_\\mathrm{{test}}$",
+            fontweight='bold',
+            fontsize='large',
+            ha='center',
+            va='bottom',
+        )
+
+
 class Models2D(Models1D):
     params = params_2d
 
@@ -233,7 +288,7 @@ class Models2D(Models1D):
             ncols=ncols * 2,
             figsize=[7.6, 4.5],
             share=True,
-            wspace=([0, None]*3)[:-1],
+            wspace=([0, None]*ncols)[:-1],
             left=8.5,
             top=5.5,
         )
@@ -309,25 +364,52 @@ class Models2D(Models1D):
 
 
 DZMaxs = Models1D.construct(
-    'DZMaxs', Article1DDZMax, 'dzmaxs', example_idx=0,
-    attribute_symbol='\\Delta{V}', attribute_units='~\\mathrm{m/s}'
+    'DZMaxs',
+    Article1DDZMax,
+    'dzmaxs',
+    example_idx=0,
+    attribute_symbol='\\Delta{V}',
+    attribute_units='~\\mathrm{m/s}'
 )
 DZMaxs.filename = 'dzmaxs.pdf'
+DZMaxsAll = Models1DAll.construct(
+    'DZMaxsAll',
+    Article1DDZMax,
+    'dzmaxs',
+    example_idx=0,
+    attribute_symbol='\\Delta{V}',
+    attribute_units='~\\mathrm{m/s}',
+    train_att=['all'],
+)
+DZMaxsAll.filename = 'dzmaxs_all.pdf'
 Freqs = Models1D.construct(
-    'Freqs', Article1DFreq, 'freqs', example_idx=0,
-    attribute_symbol='f', attribute_units='~\\mathrm{Hz}'
+    'Freqs',
+    Article1DFreq,
+    'freqs',
+    example_idx=0,
+    attribute_symbol='f',
+    attribute_units='~\\mathrm{Hz}',
 )
 DIPS_EXAMPLE_IDX = 3
 Dips = Models2D.construct(
-    'Dips', Article2DDip, 'dips', example_idx=DIPS_EXAMPLE_IDX,
-    attribute_symbol='\\theta', attribute_units='^\\circ'
+    'Dips',
+    Article2DDip,
+    'dips',
+    example_idx=DIPS_EXAMPLE_IDX,
+    attribute_symbol='\\theta',
+    attribute_units='^\\circ',
 )
 Faults = Models2D.construct(
-    'Faults', Article2DFault, 'faults', example_idx=DIPS_EXAMPLE_IDX,
-    attribute_symbol='d', attribute_units='~\\mathrm{m}'
+    'Faults',
+    Article2DFault,
+    'faults',
+    example_idx=DIPS_EXAMPLE_IDX,
+    attribute_symbol='d',
+    attribute_units='~\\mathrm{m}',
 )
 
 catalog.register(DZMaxs)
+catalog.register(DZMaxsAll)
 catalog.register(Freqs)
 catalog.register(Dips)
 catalog.register(Faults)
