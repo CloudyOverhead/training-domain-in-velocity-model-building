@@ -33,73 +33,80 @@ class Models1D(Figure):
     @classmethod
     def construct(
         cls, name, datasets, log_subdir,
-        attribute_symbol, attribute_units, example_idx=0, train_att=None,
+        attribute_symbol, attribute_units, example_idx=0,
+        train_atts=None, test_atts=None,
     ):
         cls = type(name, cls.__bases__, dict(cls.__dict__))
         cls.attribute_symbol = attribute_symbol
         cls.attribute_units = attribute_units
-        cls.datasets = {
+        cls.datasets = datasets = {
             attribute: Dataset(cls.params)
             for attribute, Dataset in datasets.items()
         }
-        if train_att is None:
-            cls.train_att = cls.datasets.keys()
+        if train_atts is None:
+            cls.train_atts = cls.datasets.keys()
         else:
-            cls.train_att = train_att
+            cls.train_atts = train_atts
+        if test_atts is None:
+            cls.test_atts = cls.datasets.keys()
+        else:
+            cls.test_atts = test_atts
         cls.statistics = {
-            (dataset, attribute): Statistics.construct(
+            (datasets[test_att], train_att): Statistics.construct(
                 nn=RCNN2D,
-                dataset=dataset,
-                savedir=str(attribute),
+                dataset=datasets[test_att],
+                savedir=str(train_att),
             )
-            for dataset in cls.datasets.values()
-            for attribute in cls.train_att
+            for test_att in cls.test_atts
+            for train_att in cls.train_atts
         }
         cls.Metadata = CompoundMetadata.combine(
             *(
                 Predictions.construct(
                     nn=RCNN2D,
-                    params=params_1d if attribute == 0 else cls.params,
-                    logdir=join('logs', log_subdir, str(attribute)),
-                    savedir=str(attribute),
-                    dataset=dataset,
-                    unique_suffix=str(attribute),
+                    params=params_1d if train_att == 0 else cls.params,
+                    logdir=join('logs', log_subdir, str(train_att)),
+                    savedir=str(train_att),
+                    dataset=datasets[test_att],
+                    unique_suffix=str(train_att),
                 )
-                for dataset in cls.datasets.values()
-                for attribute in cls.train_att
+                for test_att in cls.test_atts
+                for train_att in cls.train_atts
             ),
             *cls.statistics.values(),
             *(
                 SelectExample.construct(
-                    savedir=str(attribute),
-                    dataset=dataset,
+                    savedir=str(train_att),
+                    dataset=datasets[test_att],
                     select=lambda s, m, filenames: filenames[example_idx],
-                    SelectorMetadata=cls.statistics[(dataset, attribute)],
+                    SelectorMetadata=cls.statistics[
+                        (datasets[test_att], train_att)
+                    ],
                 )
-                for dataset in cls.datasets.values()
-                for attribute in cls.train_att
+                for test_att in cls.test_atts
+                for train_att in cls.train_atts
             ),
         )
         return cls
 
     @property
     def attributes(self):
-        return self.train_att, self.datasets.keys()
+        return self.train_atts, self.test_atts
 
     def plot(self, data):
         self.dataset = dataset = next(iter(self.datasets.values()))
-        train_att, test_att = self.attributes
+        train_atts, test_atts = self.attributes
         vint_meta = dataset.outputs['vint']
 
         fig, axs = self.subplots()
 
         table = pd.DataFrame(
-            np.empty([len(train_att), len(test_att)]),
+            np.empty([len(train_atts), len(test_atts)]),
             dtype=str,
         )
         name = dataset.name.rstrip(digits+'-')
         for (i, source_att), (j, target_att) in product(
-            enumerate(train_att), enumerate(test_att),
+            enumerate(train_atts), enumerate(test_atts),
         ):
             key = f'Statistics_{name}{target_att}_{source_att}'
             statistics = data[key]
@@ -111,10 +118,11 @@ class Models1D(Figure):
 
         axs_pairs = self.pair(axs)
         ymax = np.inf
-        for (g_ax, p_ax), (value, dataset) in zip(
-            axs_pairs, product(train_att, self.datasets.values()),
+        for (g_ax, p_ax), (train_att, test_att) in zip(
+            axs_pairs, product(train_atts, test_atts),
         ):
-            example = data[f'SelectExample_{dataset.name}_{value}']
+            dataset = self.datasets[test_att]
+            example = data[f'SelectExample_{dataset.name}_{train_att}']
             label = example['labels/vint']
             pred = example['preds/vint']
 
@@ -180,11 +188,11 @@ class Models1D(Figure):
         )
         train_att, test_att = self.attributes
         train_att = [
-            f'${abs(a)}{units}$' if isinstance(a, int) else a
+            f'${abs(a)}{units}$' if isinstance(a, int) else "Tous"
             for a in train_att
         ]
         test_att = [
-            f'${abs(a)}{units}$' if isinstance(a, int) else a
+            f'${abs(a)}{units}$' if isinstance(a, int) else "Tous"
             for a in test_att
         ]
 
@@ -237,7 +245,7 @@ class Models1D(Figure):
         return .63, .96, .07, .53
 
 
-class Models1DAll(Models1D):
+class Models1DDZMaxs(Models1D):
     def subplots(self):
         train_att, test_att = self.attributes
         nrows = len(train_att)
@@ -245,35 +253,16 @@ class Models1DAll(Models1D):
         return pplt.subplots(
             nrows=nrows,
             ncols=ncols,
-            figsize=[3.3, 2.5],
+            figsize=[3.3, 6],
             share=True,
             wspace=None,
-            left=4.5,
-            top=6.5,
-        )
-
-    def format(self, fig, axs, crop_top, ymax):
-        Models1D.format(self, fig, axs, crop_top, ymax)
-        axs.format(
-            leftlabels=[''],
+            left=8.5,
+            top=5.5,
         )
 
     def get_suptitles_loc(self):
         # x_top, y_top, x_left, y_left
-        return .57, .92, None, None
-
-    def suptitles(self, fig):
-        symbol = self.attribute_symbol
-        x_top, y_top, x_left, y_left = self.get_suptitles_loc()
-        fig.text(
-            x=x_top,
-            y=y_top,
-            s=f"${symbol}_\\mathrm{{test}}$",
-            fontweight='bold',
-            fontsize='large',
-            ha='center',
-            va='bottom',
-        )
+        return .63, .97, .07, .61
 
 
 class Models2D(Models1D):
@@ -363,25 +352,19 @@ class Models2D(Models1D):
         return .5, .96, .03, .5
 
 
-DZMaxs = Models1D.construct(
+DZMaxs = Models1DDZMaxs.construct(
     'DZMaxs',
-    Article1DDZMax,
-    'dzmaxs',
-    example_idx=0,
-    attribute_symbol='\\Delta{V}',
-    attribute_units='~\\mathrm{m/s}'
-)
-DZMaxs.filename = 'dzmaxs.pdf'
-DZMaxsAll = Models1DAll.construct(
-    'DZMaxsAll',
-    Article1DDZMax,
+    {
+        **Article1DDZMax,
+        'all': Article1DDZMaxAll,
+    },
     'dzmaxs',
     example_idx=0,
     attribute_symbol='\\Delta{V}',
     attribute_units='~\\mathrm{m/s}',
-    train_att=['all'],
+    test_atts=Article1DDZMax.keys(),
 )
-DZMaxsAll.filename = 'dzmaxs_all.pdf'
+DZMaxs.filename = 'dzmaxs.pdf'
 Freqs = Models1D.construct(
     'Freqs',
     Article1DFreq,
@@ -409,7 +392,6 @@ Faults = Models2D.construct(
 )
 
 catalog.register(DZMaxs)
-catalog.register(DZMaxsAll)
 catalog.register(Freqs)
 catalog.register(Dips)
 catalog.register(Faults)

@@ -42,7 +42,6 @@ class Predictions(Metadata):
         logdir = self.logdir
         savedir = self.savedir
         dataset = self.dataset
-        dataset._getfilelist()
 
         print("Launching inference.")
         print("NN:", nn.__name__)
